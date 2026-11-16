@@ -32,11 +32,12 @@ fn main() -> Result<(), Error> {
         panic!("{}", e);
     });
 
-    window.set_target_fps(60);
+    window.set_target_fps(240);
 
     let mut buffer = vec![0u32; SCREEN_WIDTH * SCREEN_LENGTH];
     while window.is_open() && !window.is_key_down(Key::Escape) {
         emulator.fde_loop();
+        emulator.timer_tick();
 
         for (buffer_color, pixel) in buffer.iter_mut().zip(emulator.get_screen().iter()) {
             *buffer_color = if *pixel { 0xFFFFFF } else { 0x0 }
