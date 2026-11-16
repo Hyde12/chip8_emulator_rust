@@ -1,6 +1,5 @@
-use chip8_core::{self, add};
+use chip8_core::{self};
 
 fn main() {
     println!("Hello, world!");
-    println!("{}", add(5, 3))
 }

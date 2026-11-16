@@ -1,3 +1,5 @@
+use rand::{self, random};
+
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_LENGTH: usize = 32;
 
@@ -75,5 +77,188 @@ impl emulator {
         *stack_ref = 0;
 
         val
+    }
+
+    // Fetch, Decode, Execute loop running per tick
+    fn fde_loop(&mut self) {
+        let instruction = self.fetch();
+    }
+
+    fn fetch(&mut self) -> u16 {
+        let first_bit = self.ram[self.program_counter as usize] as u16;
+        let second_bit = self.ram[self.program_counter as usize + 1] as u16;
+
+        self.program_counter += 2;
+
+        (first_bit << 8) | second_bit // Moves 8 bits to the left and combines with the second bit as a u16
+    }
+
+    fn decode_and_execute(&mut self, instruction: u16) {
+        // binary AND masking
+        let first_nibble = (instruction & 0xF000) >> 12;
+        let second_nibble = (instruction & 0x0F00) >> 8;
+        let third_nibble = (instruction & 0x00F0) >> 4;
+        let fourth_nibble = instruction & 0x000F;
+
+        match (first_nibble, second_nibble, third_nibble, fourth_nibble) {
+            (0, 0, 0, 0) => return,
+            (0, 0, 0xE, 0) => self.screen = [false; SCREEN_WIDTH * SCREEN_LENGTH],
+            (0, 0, 0xE, 0xE) => self.program_counter = self.pop(),
+            (1, _, _, _) => self.program_counter = instruction & 0x0FFF,
+            (2, _, _, _) => {
+                self.push(self.program_counter);
+                self.program_counter = instruction & 0x0FFF;
+            }
+            (3, _, _, _) => {
+                if self.v_registers[second_nibble as usize] == (instruction & 0x00FF) as u8 {
+                    self.program_counter += 2;
+                }
+            }
+            (4, _, _, _) => {
+                if self.v_registers[second_nibble as usize] != (instruction & 0x00FF) as u8 {
+                    self.program_counter += 2;
+                }
+            }
+            (5, _, _, 0) => {
+                if self.v_registers[second_nibble as usize]
+                    == self.v_registers[third_nibble as usize]
+                {
+                    self.program_counter += 2;
+                }
+            }
+            (6, _, _, _) => self.v_registers[second_nibble as usize] = (instruction & 0x00FF) as u8,
+            (7, _, _, _) => {
+                self.v_registers[second_nibble as usize] +=
+                    ((third_nibble << 4) | fourth_nibble) as u8
+            }
+            (8, _, _, 0) => {
+                self.v_registers[second_nibble as usize] = self.v_registers[third_nibble as usize]
+            }
+            (8, _, _, 1) => {
+                self.v_registers[second_nibble as usize] |= self.v_registers[third_nibble as usize]
+            }
+            (8, _, _, 2) => {
+                self.v_registers[second_nibble as usize] &= self.v_registers[third_nibble as usize]
+            }
+            (8, _, _, 3) => {
+                self.v_registers[second_nibble as usize] ^= self.v_registers[third_nibble as usize]
+            }
+            (8, _, _, 4) => {
+                let vx = self.v_registers[second_nibble as usize];
+                let vy = self.v_registers[third_nibble as usize];
+
+                let (result, did_overflow) = vx.overflowing_add(vy);
+
+                self.v_registers[second_nibble as usize] = result;
+                self.v_registers[0xF as usize] = if did_overflow { 1 } else { 0 }
+            }
+            (8, _, _, 5) => {
+                let vx = self.v_registers[second_nibble as usize];
+                let vy = self.v_registers[third_nibble as usize];
+
+                let (result, did_underflow) = vx.overflowing_sub(vy);
+
+                self.v_registers[second_nibble as usize] = result;
+                self.v_registers[0xF as usize] = if did_underflow { 0 } else { 1 }
+            }
+            (8, _, _, 6) => {
+                // should be configurable
+                self.v_registers[second_nibble as usize] = self.v_registers[third_nibble as usize];
+
+                let shifted_bit = (self.v_registers[second_nibble as usize] >> 1) & 1;
+                self.v_registers[second_nibble as usize] >>= 1;
+
+                self.v_registers[0xF as usize] = if shifted_bit == 1 { 1 } else { 0 }
+            }
+            (8, _, _, 7) => {
+                let vx = self.v_registers[second_nibble as usize];
+                let vy = self.v_registers[third_nibble as usize];
+
+                let (result, did_underflow) = vy.overflowing_sub(vx);
+
+                self.v_registers[second_nibble as usize] = result;
+                self.v_registers[0xF as usize] = if did_underflow { 0 } else { 1 }
+            }
+            (8, _, _, 0xE) => {
+                // should be configurable
+                self.v_registers[second_nibble as usize] = self.v_registers[third_nibble as usize];
+
+                let shifted_bit = (self.v_registers[second_nibble as usize] >> 7) & 1;
+                self.v_registers[second_nibble as usize] <<= 1;
+
+                self.v_registers[0xF as usize] = if shifted_bit == 1 { 1 } else { 0 }
+            }
+            (9, _, _, 0) => {
+                if self.v_registers[second_nibble as usize]
+                    != self.v_registers[third_nibble as usize]
+                {
+                    self.program_counter += 2;
+                }
+            }
+            (0xA, _, _, _) => {
+                self.i_register = (second_nibble << 8) | (third_nibble << 4) | fourth_nibble
+            }
+            (0xB, _, _, _) => {
+                self.program_counter = (self.v_registers[0] as u16) + (instruction & 0x0FFF)
+            }
+            (0xC, _, _, _) => {
+                let random: u8 = random();
+                self.v_registers[second_nibble as usize] = random & ((instruction & 0x00FF) as u8)
+            }
+            (0xD, _, _, _) => {
+                let x_coordinate = self.v_registers[second_nibble as usize] % 64;
+                let y_coordinate = self.v_registers[third_nibble as usize] % 32;
+                let height = fourth_nibble as u8;
+                let mut flipped = false;
+
+                for sprite_y in 0..height {
+                    let sprite_row = self.i_register + sprite_y as u16;
+                    let sprite = self.ram[sprite_row as usize];
+                    let y = y_coordinate + sprite_y;
+
+                    for sprite_x in 0..8 {
+                        let x = x_coordinate + sprite_x;
+                        let screen_point = y as usize * SCREEN_WIDTH + x as usize;
+
+                        if (sprite & (0b10000000 >> sprite_x)) != 0 {
+                            if self.screen[screen_point] {
+                                self.screen[screen_point] = false;
+                                flipped = true;
+                            } else {
+                                self.screen[screen_point] = true;
+                                flipped = false;
+                            }
+                        }
+
+                        if x == SCREEN_WIDTH as u8 {
+                            break;
+                        }
+                    }
+
+                    if y == SCREEN_LENGTH as u8 {
+                        break;
+                    }
+                }
+
+                self.v_registers[0xF] = if flipped { 1 } else { 0 };
+            }
+            (0xF, _, 0, 7) => self.v_registers[second_nibble as usize] = self.delay_timer,
+            (0xF, _, 1, 5) => self.delay_timer = self.v_registers[second_nibble as usize],
+            (0xF, _, 1, 8) => self.sound_timer = self.v_registers[second_nibble as usize],
+            (0xF, _, 1, 0xE) => self.i_register += self.v_registers[second_nibble as usize] as u16,
+            (0xF, _, 2, 9) => self.i_register = self.v_registers[second_nibble as usize] as u16,
+
+            (_, _, _, _) => unimplemented!("Unimplemented code: {}", instruction),
+        }
+    }
+
+    fn timer_tick(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+
+        if self.sound_timer > 0 {
+            self.delay_timer -= 1;
+        }
     }
 }
