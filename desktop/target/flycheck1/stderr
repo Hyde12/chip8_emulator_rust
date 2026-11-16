@@ -1,5 +1,0 @@
-    Checking chip8_core v0.1.0 (D:\Projects\chip8_emu\chip8_core)
-    Checking desktop v0.1.0 (D:\Projects\chip8_emu\desktop)
-error: could not compile `desktop` (bin "desktop") due to 1 previous error
-warning: build failed, waiting for other jobs to finish...
-error: could not compile `desktop` (bin "desktop" test) due to 1 previous error
