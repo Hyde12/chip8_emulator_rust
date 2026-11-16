@@ -97,6 +97,20 @@ impl emulator {
         &self.screen
     }
 
+    pub fn timer_tick(&mut self) {
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+        }
+    }
+
+    pub fn set_key_state(&mut self, key_index: usize, is_pressed: bool) {
+        self.keys[key_index] = is_pressed;
+    }
+
     fn fetch(&mut self) -> u16 {
         let first_bit = self.ram[self.program_counter as usize] as u16;
         let second_bit = self.ram[self.program_counter as usize + 1] as u16;
@@ -176,7 +190,7 @@ impl emulator {
             }
             (8, _, _, 6) => {
                 // should be configurable
-                self.v_registers[second_nibble as usize] = self.v_registers[third_nibble as usize];
+                // self.v_registers[second_nibble as usize] = self.v_registers[third_nibble as usize];
 
                 let shifted_bit = (self.v_registers[second_nibble as usize] >> 1) & 1;
                 self.v_registers[second_nibble as usize] >>= 1;
@@ -219,8 +233,8 @@ impl emulator {
                 self.v_registers[second_nibble as usize] = random & ((instruction & 0x00FF) as u8)
             }
             (0xD, _, _, _) => {
-                let x_coordinate = self.v_registers[second_nibble as usize] % 64;
-                let y_coordinate = self.v_registers[third_nibble as usize] % 32;
+                let x_coordinate = self.v_registers[second_nibble as usize];
+                let y_coordinate = self.v_registers[third_nibble as usize];
                 let height = fourth_nibble as u8;
                 let mut flipped = false;
 
@@ -229,8 +243,17 @@ impl emulator {
                     let sprite = self.ram[sprite_row as usize];
                     let y = y_coordinate + sprite_y;
 
+                    if y >= SCREEN_LENGTH as u8 {
+                        break;
+                    }
+
                     for sprite_x in 0..8 {
                         let x = x_coordinate + sprite_x;
+
+                        if x >= SCREEN_WIDTH as u8 {
+                            break;
+                        }
+
                         let screen_point = y as usize * SCREEN_WIDTH + x as usize;
 
                         if (sprite & (0b10000000 >> sprite_x)) != 0 {
@@ -239,49 +262,50 @@ impl emulator {
                                 flipped = true;
                             } else {
                                 self.screen[screen_point] = true;
-                                flipped = false;
                             }
                         }
-
-                        if x == SCREEN_WIDTH as u8 {
-                            break;
-                        }
-                    }
-
-                    if y == SCREEN_LENGTH as u8 {
-                        break;
                     }
                 }
 
                 self.v_registers[0xF] = if flipped { 1 } else { 0 };
             }
             (0xE, _, 9, 0xE) => {
-                if self.keys[second_nibble as usize] {
+                if self.keys[self.v_registers[second_nibble as usize] as usize] {
                     self.program_counter += 2
                 }
             }
             (0xE, _, 0xA, 1) => {
-                if !self.keys[second_nibble as usize] {
+                if !self.keys[self.v_registers[second_nibble as usize] as usize] {
                     self.program_counter += 2
                 }
             }
             (0xF, _, 0, 7) => self.v_registers[second_nibble as usize] = self.delay_timer,
+            (0xF, _, 0, 0xA) => match self.keys.iter().position(|is_pressed| *is_pressed) {
+                Some(key_pos) => self.v_registers[second_nibble as usize] = key_pos as u8,
+                None => self.program_counter -= 2,
+            },
             (0xF, _, 1, 5) => self.delay_timer = self.v_registers[second_nibble as usize],
             (0xF, _, 1, 8) => self.sound_timer = self.v_registers[second_nibble as usize],
             (0xF, _, 1, 0xE) => self.i_register += self.v_registers[second_nibble as usize] as u16,
             (0xF, _, 2, 9) => self.i_register = self.v_registers[second_nibble as usize] as u16,
+            (0xF, _, 3, 3) => {
+                let number = self.v_registers[second_nibble as usize] as f32;
 
+                self.ram[self.i_register as usize] = (number / 100.0).floor() as u8;
+                self.ram[self.i_register as usize + 1] = ((number / 10.0) % 10.0).floor() as u8;
+                self.ram[self.i_register as usize + 2] = (number % 10.0).floor() as u8;
+            }
+            (0xF, _, 5, 5) => {
+                for i in 0..=second_nibble as usize {
+                    self.ram[self.i_register as usize + i] = self.v_registers[i];
+                }
+            }
+            (0xF, _, 6, 5) => {
+                for i in 0..=second_nibble as usize {
+                    self.v_registers[i] = self.ram[self.i_register as usize + i];
+                }
+            }
             (_, _, _, _) => unimplemented!("Unimplemented code: {}", instruction),
-        }
-    }
-
-    fn timer_tick(&mut self) {
-        if self.delay_timer > 0 {
-            self.delay_timer -= 1;
-        }
-
-        if self.sound_timer > 0 {
-            self.delay_timer -= 1;
         }
     }
 }

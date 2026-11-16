@@ -5,7 +5,7 @@ use std::{
 };
 
 use chip8_core::{self, SCREEN_LENGTH, SCREEN_WIDTH, emulator};
-use minifb::{Key, Window, WindowOptions};
+use minifb::{Key, KeyRepeat, Window, WindowOptions};
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -32,11 +32,34 @@ fn main() -> Result<(), Error> {
         panic!("{}", e);
     });
 
-    window.set_target_fps(240);
+    window.set_target_fps(60);
 
     let mut buffer = vec![0u32; SCREEN_WIDTH * SCREEN_LENGTH];
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        emulator.fde_loop();
+        window
+            .get_keys()
+            .iter()
+            .for_each(|key| match key_to_index(*key) {
+                0..=15 => {
+                    emulator.set_key_state(key_to_index(*key), true);
+                }
+                _ => {}
+            });
+
+        window
+            .get_keys_released()
+            .iter()
+            .for_each(|key| match key_to_index(*key) {
+                0..=15 => {
+                    emulator.set_key_state(key_to_index(*key), false);
+                }
+                _ => {}
+            });
+
+        for _ in 0..10 {
+            emulator.fde_loop();
+        }
+
         emulator.timer_tick();
 
         for (buffer_color, pixel) in buffer.iter_mut().zip(emulator.get_screen().iter()) {
@@ -49,4 +72,26 @@ fn main() -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+fn key_to_index(key: Key) -> usize {
+    match key {
+        Key::Key1 => 0x1,
+        Key::Key2 => 0x2,
+        Key::Key3 => 0x3,
+        Key::Key4 => 0xC,
+        Key::Q => 0x4,
+        Key::W => 0x5,
+        Key::E => 0x6,
+        Key::R => 0xD,
+        Key::A => 0x7,
+        Key::S => 0x8,
+        Key::D => 0x9,
+        Key::F => 0xE,
+        Key::Z => 0xA,
+        Key::X => 0x0,
+        Key::C => 0xB,
+        Key::V => 0xF,
+        _ => 200,
+    }
 }
