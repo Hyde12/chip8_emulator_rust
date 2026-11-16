@@ -1,11 +1,12 @@
 use rand::{self, random};
 
-const SCREEN_WIDTH: usize = 64;
-const SCREEN_LENGTH: usize = 32;
+pub const SCREEN_WIDTH: usize = 64;
+pub const SCREEN_LENGTH: usize = 32;
 
 const RAM_SIZE: usize = 4096;
 const REGISTERS_AMOUNT: usize = 16;
 const STACK_SIZE: usize = 16;
+const KEYS_AMOUNT: usize = 16;
 
 const PROGRAM_START: u16 = 0x200;
 
@@ -42,6 +43,7 @@ pub struct emulator {
     stack_pointer: u16,
     delay_timer: u8,
     sound_timer: u8,
+    keys: [bool; KEYS_AMOUNT],
 }
 
 impl emulator {
@@ -56,11 +58,17 @@ impl emulator {
             stack_pointer: 0,
             delay_timer: 0,
             sound_timer: 0,
+            keys: [false; KEYS_AMOUNT],
         };
 
-        emulator.ram[FONT_START..=FONT_END].copy_from_slice(&FONT);
+        emulator.ram[FONT_START..FONT_END].copy_from_slice(&FONT);
 
         emulator
+    }
+
+    pub fn load(&mut self, rom_data: Vec<u8>) {
+        self.ram[PROGRAM_START as usize..PROGRAM_START as usize + rom_data.len()]
+            .copy_from_slice(&rom_data);
     }
 
     fn push(&mut self, val: u16) {
@@ -80,8 +88,13 @@ impl emulator {
     }
 
     // Fetch, Decode, Execute loop running per tick
-    fn fde_loop(&mut self) {
+    pub fn fde_loop(&mut self) {
         let instruction = self.fetch();
+        self.decode_and_execute(instruction);
+    }
+
+    pub fn get_screen(&self) -> &[bool] {
+        &self.screen
     }
 
     fn fetch(&mut self) -> u16 {
@@ -128,8 +141,8 @@ impl emulator {
             }
             (6, _, _, _) => self.v_registers[second_nibble as usize] = (instruction & 0x00FF) as u8,
             (7, _, _, _) => {
-                self.v_registers[second_nibble as usize] +=
-                    ((third_nibble << 4) | fourth_nibble) as u8
+                self.v_registers[second_nibble as usize] = self.v_registers[second_nibble as usize]
+                    .wrapping_add(instruction as u8 & 0x00FF)
             }
             (8, _, _, 0) => {
                 self.v_registers[second_nibble as usize] = self.v_registers[third_nibble as usize]
@@ -241,6 +254,16 @@ impl emulator {
                 }
 
                 self.v_registers[0xF] = if flipped { 1 } else { 0 };
+            }
+            (0xE, _, 9, 0xE) => {
+                if self.keys[second_nibble as usize] {
+                    self.program_counter += 2
+                }
+            }
+            (0xE, _, 0xA, 1) => {
+                if !self.keys[second_nibble as usize] {
+                    self.program_counter += 2
+                }
             }
             (0xF, _, 0, 7) => self.v_registers[second_nibble as usize] = self.delay_timer,
             (0xF, _, 1, 5) => self.delay_timer = self.v_registers[second_nibble as usize],
