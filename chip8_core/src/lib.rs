@@ -60,4 +60,20 @@ impl emulator {
 
         emulator
     }
+
+    fn push(&mut self, val: u16) {
+        self.stack[self.stack_pointer as usize] = val;
+        self.stack_pointer += 1;
+    }
+
+    fn pop(&mut self) -> u16 {
+        self.stack_pointer -= 1;
+
+        // can lwk js return orig val but it looks cooler this way and sets the memory back to 0
+        let stack_ref = &mut self.stack[self.stack_pointer as usize];
+        let val = *stack_ref;
+        *stack_ref = 0;
+
+        val
+    }
 }
