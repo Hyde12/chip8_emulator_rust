@@ -10,17 +10,20 @@ use minifb::{Key, Window, WindowOptions};
 use rodio::{Source, source::SineWave};
 
 fn main() -> Result<(), Error> {
+    // Get ROM path argument
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
         panic!("Woah there buddy, add a rom file path.");
     }
-
-    let mut emulator = Emulator::new();
     let rom_path = &args[1];
     let rom_data = fs::read(rom_path)?;
+
+    // Initialize Emulator struct and load ROM data into RAM
+    let mut emulator = Emulator::new();
     emulator.load(rom_data);
 
+    // Initialize window
     let mut window_options = WindowOptions::default();
     window_options.scale = minifb::Scale::X16;
 
@@ -36,11 +39,14 @@ fn main() -> Result<(), Error> {
 
     window.set_target_fps(60);
 
+    // Initialize audio playback
     let handle = rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
     let player = rodio::Player::connect_new(&handle.mixer());
 
+    // Screen buffer to empty RGB array
     let mut buffer = vec![0u32; SCREEN_WIDTH * SCREEN_LENGTH];
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        // Check if certain keys are pressed
         window
             .get_keys()
             .iter()
@@ -51,6 +57,7 @@ fn main() -> Result<(), Error> {
                 _ => {}
             });
 
+        // Check if certain keys have been released
         window
             .get_keys_released()
             .iter()
@@ -61,6 +68,7 @@ fn main() -> Result<(), Error> {
                 _ => {}
             });
 
+        // If the emulator audio timer > 0 play a sound
         if emulator.is_playing_sound() {
             let source = SineWave::new(500.0)
                 .take_duration(Duration::from_secs_f32(0.01))
@@ -68,16 +76,20 @@ fn main() -> Result<(), Error> {
             player.append(source);
         }
 
+        // 10 ticks per frame
         for _ in 0..10 {
             emulator.fde_loop();
         }
 
+        // Tick delay & audio timer down
         emulator.timer_tick();
 
+        // Fill the buffer with white/black pixels depending on boolean values
         for (buffer_color, pixel) in buffer.iter_mut().zip(emulator.get_screen().iter()) {
             *buffer_color = if *pixel { 0xFFFFFF } else { 0x0 }
         }
 
+        // Update window with buffer
         window
             .update_with_buffer(&buffer, SCREEN_WIDTH, SCREEN_LENGTH)
             .unwrap();
@@ -86,6 +98,7 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
+// Helper function to map a key to the index of the CHIP8 keypad
 fn key_to_index(key: Key) -> usize {
     match key {
         Key::Key1 => 0x1,
