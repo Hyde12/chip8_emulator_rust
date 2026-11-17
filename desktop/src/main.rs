@@ -2,10 +2,12 @@ use std::{
     env,
     fs::{self},
     io::Error,
+    time::Duration,
 };
 
-use chip8_core::{self, SCREEN_LENGTH, SCREEN_WIDTH, emulator};
-use minifb::{Key, KeyRepeat, Window, WindowOptions};
+use chip8_core::{self, Emulator, SCREEN_LENGTH, SCREEN_WIDTH};
+use minifb::{Key, Window, WindowOptions};
+use rodio::{Source, source::SineWave};
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().collect();
@@ -14,7 +16,7 @@ fn main() -> Result<(), Error> {
         panic!("Woah there buddy, add a rom file path.");
     }
 
-    let mut emulator = emulator::new();
+    let mut emulator = Emulator::new();
     let rom_path = &args[1];
     let rom_data = fs::read(rom_path)?;
     emulator.load(rom_data);
@@ -33,6 +35,9 @@ fn main() -> Result<(), Error> {
     });
 
     window.set_target_fps(60);
+
+    let handle = rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
+    let player = rodio::Player::connect_new(&handle.mixer());
 
     let mut buffer = vec![0u32; SCREEN_WIDTH * SCREEN_LENGTH];
     while window.is_open() && !window.is_key_down(Key::Escape) {
@@ -55,6 +60,13 @@ fn main() -> Result<(), Error> {
                 }
                 _ => {}
             });
+
+        if emulator.is_playing_sound() {
+            let source = SineWave::new(500.0)
+                .take_duration(Duration::from_secs_f32(0.01))
+                .amplify(0.20);
+            player.append(source);
+        }
 
         for _ in 0..10 {
             emulator.fde_loop();

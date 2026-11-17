@@ -33,7 +33,7 @@ const FONT: [u8; FONT_SIZE] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
 
-pub struct emulator {
+pub struct Emulator {
     program_counter: u16, // points at current instruction in memory
     ram: [u8; RAM_SIZE],
     screen: [bool; SCREEN_WIDTH * SCREEN_LENGTH],
@@ -46,9 +46,9 @@ pub struct emulator {
     keys: [bool; KEYS_AMOUNT],
 }
 
-impl emulator {
+impl Emulator {
     pub fn new() -> Self {
-        let mut emulator = emulator {
+        let mut emulator = Emulator {
             program_counter: PROGRAM_START,
             ram: [0; RAM_SIZE],
             screen: [false; SCREEN_WIDTH * SCREEN_LENGTH],
@@ -95,6 +95,10 @@ impl emulator {
 
     pub fn get_screen(&self) -> &[bool] {
         &self.screen
+    }
+
+    pub fn is_playing_sound(&self) -> bool {
+        self.sound_timer > 0
     }
 
     pub fn timer_tick(&mut self) {
